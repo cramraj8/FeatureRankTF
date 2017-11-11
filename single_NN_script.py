@@ -13,32 +13,29 @@ from sklearn.model_selection import train_test_split
 import tensorflow.contrib.slim as slim
 from tensorflow.contrib.framework.python.ops.variables import get_or_create_global_step
 from tensorflow.python.platform import tf_logging as logging
-import time
-import cox_layer
 from SurvivalAnalysis import SurvivalAnalysis
 
 
-def load_data_set(name=None):
+def data_provider(data_file='./survivalData.csv'):
 
-    data_feed = pd.read_csv('./data/Brain_Integ_X.csv', skiprows=[0], header=None)
-    labels_feed = pd.read_csv('./data/Brain_Integ_Y.csv', skiprows=[1], header=0)
-    survival = labels_feed['Survival']
-    censored = labels_feed['Censored']
+    data_feed = pd.read_csv(data_file, skiprows=None, header=None)
 
-    survival = survival.values
-    censored = censored.values
-    data = data_feed.values
+    feature_names = data_feed.loc[0, 3:]
 
-    # Change these array types later ***
-    y = np.asarray(survival, dtype=np.float32)
-    x = np.asarray(data, dtype=np.float32)
-    c = np.asarray(censored, dtype=np.float32)
+    data_feed.columns = data_feed.iloc[0]
+    data_feed = data_feed[1:]
 
-    print('Shape of X : ', x.shape)
-    print('Shape of Y : ', y.shape)
-    print('Shape of C : ', c.shape)
+    survival = data_feed['Survival Time']
+    censored = data_feed['Censored Status']
 
-    return (x, y, c)
+    feature_matrix = data_feed.iloc[0:, 3:]
+
+    survival = np.asarray(survival, dtype=np.float32)
+    feature_matrix = np.asarray(feature_matrix, dtype=np.float32)
+    censored = np.asarray(censored, dtype=np.float32)
+    feature_names = list(feature_names)
+
+    return feature_matrix, survival, censored, feature_names
 
 
 def multilayer_neural_network_model(inputs, HIDDEN_LAYERS, BETA,
@@ -59,9 +56,25 @@ def multilayer_neural_network_model(inputs, HIDDEN_LAYERS, BETA,
             return predictions, end_points
 
 
+def cost_function_censored(predictions, at_risk_label, censored):
+
+    with tf.name_scope('loss_function'):
+
+        max_preds = tf.reduce_max(predictions, axis=0)
+        factorized_preds = predictions - max_preds
+        exp = tf.exp(factorized_preds)
+        partial_sum = tf.cumsum(exp, reverse=True)
+        partial_sum_at_risk = tf.gather(partial_sum, at_risk_label)
+        log_at_risk = tf.log(partial_sum_at_risk) + max_preds
+        diff = tf.subtract(predictions, log_at_risk)
+        diff_uncensored = tf.reshape(diff, [-1]) * (1 - censored)
+        return -tf.reduce_sum(diff_uncensored)
+
+
+
 # ******************************************************************************
 BETA = 0.001
-TRAINING_EPOCHS = 10
+TRAINING_EPOCHS = 60
 BATCH_SIZE = 100
 DISPLAY_STEP = 100
 
@@ -76,7 +89,7 @@ N_CLASSES = 1
 with tf.Graph().as_default() as graph:
     logging.set_verbosity(tf.logging.INFO)
 
-    data_x, data_y, data_c = load_data_set()
+    data_x, data_y, data_c, feat_names = data_provider()
     data_x, data_y, data_c = shuffle(data_x, data_y, data_c, random_state=1)
 
     X = data_x
@@ -90,6 +103,10 @@ with tf.Graph().as_default() as graph:
 
     sa = SurvivalAnalysis()
     train_set['X'], train_set['T'], train_set['C'], train_set['A'] = sa.calc_at_risk(X[0:fold * 6, ], T[0:fold * 6], C[0:fold * 6]);
+
+    print('Shape of X : ', train_set['X'].shape)
+    print('Shape of T : ', train_set['T'].shape)
+    print('Shape of C : ', train_set['C'].shape)
 
     total_observations = train_set['X'].shape[0]
     input_features = train_set['X'].shape[1]
@@ -117,21 +134,52 @@ with tf.Graph().as_default() as graph:
                                     decay_rate=LEARNING_RATE_DECAY_FACTOR,
                                     staircase=True)
 
-# ********************** LOSS && OPTIMIZE *************************************
-    loss = cox_layer.cost_function_censored(pred, a, c)
-    # ******************************************************************************
+    # ********************** LOSS && OPTIMIZE *********************************
+    loss = cost_function_censored(pred, a, c)
+    # **************************************************************************
     optimizer = tf.train.AdamOptimizer(learning_rate=lr).minimize(loss, global_step=global_step)
-# ******************************************************************************
+
+    FeatRisks = tf.gradients(pred, x, name='Feature_Risks')
+    # **************************************************************************
     # Launch the graph
     with tf.Session() as sess:
         sess.run(tf.global_variables_initializer())
-        for epoch in range(TRAINING_EPOCHS + 1):
+        for epoch in range(TRAINING_EPOCHS):
 
-            _, avg_cost, prediction = sess.run([optimizer,
-                                                loss,
-                                                pred],
-                                               feed_dict={x: train_set['X'],
-                                                          c: train_set['C'],
-                                                          a: train_set['A']})
+            featrisks, _, avg_cost, prediction = sess.run([FeatRisks, optimizer,
+                                                           loss,
+                                                           pred],
+                                                          feed_dict={x: train_set['X'],
+                                                                     c: train_set['C'],
+                                                                     a: train_set['A']})
 
-            print(avg_cost)
+            print('cost : ', avg_cost)
+
+            featrisks = np.asarray(featrisks, np.float32)
+            featrisks = np.squeeze(featrisks)
+
+            R = np.array(featrisks)
+            R_norm = np.divide((R - np.nanmean(R, axis=0)), np.nanstd(R, axis=0))
+
+            R_avg = np.nanmean(R_norm, axis=0)
+
+            R_avg_norm = np.divide((R_avg - np.nanmean(R_avg)), np.nanstd(R_avg))
+
+            Order = np.argsort(R_avg_norm)
+            File = './Risk_rank.rnk'
+            # open rnk file
+            try:
+                Rnk = open(File, 'w')
+            except IOError:
+                print("Cannot create file ", File)
+
+            # write contents to file
+            for i in Order:
+                name = '%s : \t %s \n' % (str(feat_names[i]), str(R_avg_norm[i]))
+                Rnk.write(name)
+
+            # close file
+            Rnk.close()
+
+        print("Training Finished!")
+        print("Rank file saved!")
