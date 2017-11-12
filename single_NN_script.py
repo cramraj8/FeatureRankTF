@@ -73,7 +73,7 @@ def cost_function_censored(predictions, at_risk_label, censored):
 
 
 # ******************************************************************************
-BETA = 0.001
+BETA = 0.0001
 TRAINING_EPOCHS = 60
 BATCH_SIZE = 100
 DISPLAY_STEP = 100
@@ -158,11 +158,8 @@ with tf.Graph().as_default() as graph:
             featrisks = np.asarray(featrisks, np.float32)
             featrisks = np.squeeze(featrisks)
 
-            R = np.array(featrisks)
-            R_norm = np.divide((R - np.nanmean(R, axis=0)), np.nanstd(R, axis=0))
-
-            R_avg = np.nanmean(R_norm, axis=0)
-
+            R = np.array(abs(featrisks))
+            R_avg = np.nanmean(R, axis=0)
             R_avg_norm = np.divide((R_avg - np.nanmean(R_avg)), np.nanstd(R_avg))
 
             Order = np.argsort(R_avg_norm)
