@@ -153,9 +153,12 @@ def train():
                 featrisks, _, avg_cost, prediction = sess.run([FeatRisks, optimizer,
                                                                loss,
                                                                pred],
-                                                              feed_dict={x: train_set['X'],
-                                                                         c: train_set['C'],
-                                                                         a: train_set['A']})
+                                                              feed_dict={x:
+                                                                         train_set['X'],
+                                                                         c:
+                                                                         train_set['C'],
+                                                                         a:
+                                                                         train_set['A']})
 
                 print('cost : ', avg_cost)
 
@@ -184,6 +187,13 @@ def train():
 
             print("Training Finished!")
             print("Rank file saved!")
+
+            # Getting concordance index
+            # c = sa.c_index(prediction, train_set['T'], train_set['C'])
+            c = sa.c_index(prediction[:1000],
+                           train_set['T'][:1000],
+                           train_set['C'][:1000])
+            print("c_index = {}".format(c))
 
 
 train()
