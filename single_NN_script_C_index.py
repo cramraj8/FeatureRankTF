@@ -15,7 +15,6 @@ from tensorflow.contrib.framework.python.ops.variables import get_or_create_glob
 from tensorflow.python.platform import tf_logging as logging
 from SurvivalAnalysis import SurvivalAnalysis
 import normalize
-from bayes_opt import BayesianOptimization as bayesopt
 from Model import Model
 
 
