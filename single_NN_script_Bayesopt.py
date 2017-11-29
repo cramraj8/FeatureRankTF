@@ -200,7 +200,7 @@ if(DO_BAYESOPT):
 
     def Run_Training(LEARN_RATE, DEPTH, MAXWIDTH, KEEP_PROB):
 
-        INPUT_ARG = [[MAXWIDTH] * DEPTH, [KEEP_PROB], ['relu']]
+        INPUT_ARG = [[int(MAXWIDTH)] * int(DEPTH), [KEEP_PROB], ['relu']]
 
         # Train network; Get validation c-index
         Output = train(INPUT_ARG)
