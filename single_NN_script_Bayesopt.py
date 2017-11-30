@@ -234,10 +234,10 @@ if(DO_BAYESOPT):
     Optim_params = bo.res['max']['max_params']
     # print(dict(Optim_params))
 
-    featrisks, c_index = train(input_ARG)
+    featrisks, c_index = train(INPUT_ARG)
 
 else:
-    featrisks, c_index = train(input_ARG)
+    featrisks, c_index = train(INPUT_ARG)
 
 # **************************************************************************
 # C - index calculation
